@@ -1,0 +1,67 @@
+name: smoke
+
+# 每日冒烟：证明 X 的私有 GraphQL 接口（queryId / chat features）没有失效。
+# 需要的仓库 secrets：
+#   X_COOKIES  Netscape 格式 cookies（含 auth_token 与 ct0，同一个会话）
+#   X_PROXY    （可选）代理地址，如 http://1.2.3.4:7897；不填则直连
+# 未配置 X_COOKIES 时本工作流会跳过而不是失败，方便 fork。
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 每天 09:00（北京时间）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install .
+
+      - name: Check secrets
+        id: check
+        env:
+          X_COOKIES: ${{ secrets.X_COOKIES }}
+        run: |
+          if [ -z "$X_COOKIES" ]; then
+            echo "X_COOKIES 未配置，跳过冒烟测试"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write cookies
+        if: steps.check.outputs.skip == 'false'
+        env:
+          X_COOKIES: ${{ secrets.X_COOKIES }}
+        run: |
+          umask 077
+          printf '%s\n' "$X_COOKIES" > "$RUNNER_TEMP/x_cookies.txt"
+
+      - name: Download latest article
+        if: steps.check.outputs.skip == 'false'
+        env:
+          XADL_COOKIES: ${{ runner.temp }}/x_cookies.txt
+          X_PROXY: ${{ secrets.X_PROXY }}
+        run: |
+          if [ -n "$X_PROXY" ]; then
+            x-article-dl eng_khairallah1 --limit 1 --no-images --json \
+              --outdir "$RUNNER_TEMP/out" --proxy "$X_PROXY"
+          else
+            x-article-dl eng_khairallah1 --limit 1 --no-images --json \
+              --outdir "$RUNNER_TEMP/out" --no-proxy
+          fi
+
+      - name: Show index
+        if: always() && steps.check.outputs.skip == 'false'
+        run: cat "$RUNNER_TEMP/out/index.md" || true
