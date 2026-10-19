@@ -24,7 +24,7 @@ USER_OP = "UserByScreenName"
 @dataclass(frozen=True)
 class UserInfo:
     user_id: str
-    screen_name: str  # authoritative casing, straight from the API (坑 L6)
+    screen_name: str  # authoritative casing, straight from the API (pitfall L6)
     name: str = ""
 
 
@@ -45,12 +45,12 @@ def _unwrap(payload: dict, op: str) -> dict:
             "%s: %s" % (op, errors[0].get("message", "unknown GraphQL error")), errors
         )
     if "data" not in payload:
-        raise GraphQLAPIError("%s: 响应缺少 data 字段" % op, errors)
+        raise GraphQLAPIError("%s: response is missing the data field" % op, errors)
     return payload["data"]
 
 
 def _graphql(client: XClient, op: str, variables: dict, *, qid: Optional[str] = None) -> dict:
-    """Call an operation, allowing an explicit queryId override (坑 L1)."""
+    """Call an operation, allowing an explicit queryId override (pitfall L1)."""
     if qid is None:
         return client.graphql(op, variables, session=True)
     url = _endpoints.build_graphql_url(op, variables, qid=qid)
@@ -68,9 +68,10 @@ def resolve_user_id(client: XClient, handle: str) -> UserInfo:
     """Look up ``userId`` + canonical ``screen_name`` via UserByScreenName."""
     screen_name = _normalize_handle(handle)
     if not screen_name:
-        raise UserNotFoundError("handle 为空")
+        raise UserNotFoundError("handle is empty")
 
-    # queryId 优先取 gallery-dl 现网值，读不到才退回显式常量（坑 L1/L9）
+    # Prefer the queryId currently used by gallery-dl, fall back to the explicit
+    # constant when it cannot be read (pitfalls L1/L9).
     qid = auth.read_query_id(USER_OP, getattr(client, "bearer_path", None))
     if qid:
         logger.debug("UserByScreenName queryId from gallery-dl: %s", qid)
@@ -79,10 +80,12 @@ def resolve_user_id(client: XClient, handle: str) -> UserInfo:
     result = (((data.get("user") or {}).get("result")) or {})
     typename = result.get("__typename")
     if typename in ("UserUnavailable", "UserTombstone"):
-        raise UserNotFoundError("用户不可用：@%s（%s）" % (screen_name, typename))
+        raise UserNotFoundError("user unavailable: @%s (%s)" % (screen_name, typename))
     rest_id = result.get("rest_id")
     if not rest_id:
-        raise UserNotFoundError("没拿到 @%s 的 user_id；可用 --user-id 直填" % screen_name)
+        raise UserNotFoundError(
+            "no user_id returned for @%s; pass --user-id to skip this lookup" % screen_name
+        )
 
     legacy = result.get("legacy") or {}
     core = result.get("core") or {}
@@ -100,7 +103,7 @@ def resolve_user_id(client: XClient, handle: str) -> UserInfo:
 # timeline parsing
 # --------------------------------------------------------------------------- #
 def _iter_entry_dicts(instruction: dict) -> Iterator[dict]:
-    """Yield entry-like dicts from every instruction shape we know of (坑 L8)."""
+    """Yield entry-like dicts from every instruction shape we know of (pitfall L8)."""
     itype = instruction.get("type") or instruction.get("__typename") or ""
     if itype in ("TimelineAddEntries", "TimelineClearCache"):
         for entry in instruction.get("entries") or []:
@@ -117,13 +120,13 @@ def _iter_entry_dicts(instruction: dict) -> Iterator[dict]:
         for item in instruction.get("moduleItems") or []:
             if isinstance(item, dict):
                 yield item
-    else:  # 兜底：任何带 entries 的 instruction
+    else:  # fallback: any instruction carrying entries
         for entry in instruction.get("entries") or []:
             yield entry
 
 
 def _tweet_id_from_entry(entry: dict) -> Optional[str]:
-    """Extract a tweet id from an entry, ignoring cursor/module noise (坑 L7)."""
+    """Extract a tweet id from an entry, ignoring cursor/module noise (pitfall L7)."""
     entry_id = entry.get("entryId") or entry.get("entry_id") or entry.get("itemId") or ""
     if entry_id.startswith("tweet-"):
         return entry_id.split("-", 1)[1]
@@ -143,12 +146,12 @@ def _parse_entries(payload: dict) -> Tuple[List[str], Optional[str]]:
     """Parse one timeline page into ``([tweet_id, ...], next_cursor)``.
 
     Handles both ``result.timeline.timeline.instructions`` and the older
-    ``result.timeline.instructions`` layout (坑 L8).
+    ``result.timeline.instructions`` layout (pitfall L8).
     """
     data = payload.get("data", payload)
     result = (((data.get("user") or {}).get("result")) or {})
     timeline = result.get("timeline") or {}
-    timeline = timeline.get("timeline", timeline)  # 现网多一层 timeline.timeline
+    timeline = timeline.get("timeline", timeline)  # live payload nests timeline.timeline
     instructions = timeline.get("instructions") or []
 
     ids: List[str] = []
@@ -160,7 +163,7 @@ def _parse_entries(payload: dict) -> Tuple[List[str], Optional[str]]:
             continue
         for entry in _iter_entry_dicts(instruction):
             entry_id = entry.get("entryId") or entry.get("entry_id") or ""
-            # 坑 L3：cursor entryId 形如 "cursor-bottom-1234567890"
+            # Pitfall L3: cursor entryId looks like "cursor-bottom-1234567890"
             if entry_id.startswith("cursor-bottom"):
                 value = ((entry.get("content") or {}).get("value")) or entry.get("value")
                 if value:
@@ -189,7 +192,7 @@ def iter_articles(
 ) -> Iterator[ArticleRef]:
     """Yield every ArticleRef of ``handle``, one page at a time.
 
-    Termination (all four, 坑 L4): no cursor / cursor loop / zero new ids /
+    Termination (all four, pitfall L4): no cursor / cursor loop / zero new ids /
     ``max_pages`` safety cap.
     """
     screen_name = _normalize_handle(handle)
@@ -215,11 +218,11 @@ def iter_articles(
             variables["cursor"] = cursor
 
         try:
-            data = client.graphql(ARTICLES_OP, variables, session=True)  # 坑 L2
+            data = client.graphql(ARTICLES_OP, variables, session=True)  # pitfall L2
         except GraphQLAPIError as exc:
             if pages == 0:
                 raise
-            logger.warning("翻页在第 %d 页中断：%s", pages + 1, exc)
+            logger.warning("paging stopped on page %d: %s", pages + 1, exc)
             break
 
         ids, next_cursor = _parse_entries({"data": data})
@@ -230,7 +233,7 @@ def iter_articles(
             index += 1
             yield ArticleRef(
                 tweet_id=tweet_id,
-                url="https://x.com/%s/status/%s" % (screen_name, tweet_id),  # 坑 L6
+                url="https://x.com/%s/status/%s" % (screen_name, tweet_id),  # pitfall L6
                 sort_index=index - 1,
             )
 
@@ -246,17 +249,17 @@ def iter_articles(
         if not next_cursor:
             break
         if next_cursor in seen_cursors:
-            logger.debug("cursor 回环，停止翻页")
+            logger.debug("cursor loop detected, stopping")
             break
         if not new_ids:
-            logger.debug("本页无新增，停止翻页")
+            logger.debug("no new ids on this page, stopping")
             break
         seen_cursors.add(next_cursor)
         cursor = next_cursor
         if page_delay:
-            time.sleep(page_delay)  # 坑 L12
+            time.sleep(page_delay)  # pitfall L12
     else:
-        logger.warning("达到 max_pages=%d 上限，停止翻页", max_pages)
+        logger.warning("reached max_pages=%d, stopping", max_pages)
 
 
 def list_articles(
@@ -267,7 +270,7 @@ def list_articles(
     user_id: Optional[str] = None,
     **kwargs,
 ) -> List[ArticleRef]:
-    """Eager version of :func:`iter_articles`; ``limit`` stops early (坑 CLI1)."""
+    """Eager version of :func:`iter_articles`; ``limit`` stops early (pitfall CLI1)."""
     it = iter_articles(client, handle, user_id=user_id, **kwargs)
     if limit and limit > 0:
         return list(itertools.islice(it, limit))

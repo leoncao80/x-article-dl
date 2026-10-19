@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "x-article-dl"
-version = "0.1.1"
+version = "0.1.2"
 description = "Download all X (Twitter) Articles of a user as clean Markdown, via private GraphQL API only."
 readme = "README.md"
 requires-python = ">=3.9"

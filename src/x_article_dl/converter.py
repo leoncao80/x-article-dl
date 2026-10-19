@@ -37,7 +37,7 @@ SUPPORTED_BLOCKS = (
 
 LIST_BLOCKS = ("unordered-list-item", "ordered-list-item")
 
-# 坑 C2: header-one/two/three 必须精确映射；four..six 顺延。
+# Pitfall C2: header-one/two/three must map exactly; four..six follow on.
 HEADER_PREFIX = {
     "header-one": "#",
     "header-two": "##",
@@ -47,14 +47,14 @@ HEADER_PREFIX = {
     "header-six": "######",
 }
 
-# 坑 C5: 行内样式 -> markdown 标记（X 实测用 "Bold"/"Italic"）
+# Pitfall C5: inline styles -> markdown markers (X actually sends "Bold"/"Italic")
 _INLINE_MARKS = {
     "BOLD": "**",
     "ITALIC": "*",
     "STRIKETHROUGH": "~~",
     "CODE": "`",
 }
-# 渲染嵌套顺序：外 -> 内
+# Nesting order: outermost -> innermost
 _MARK_ORDER = ("**", "~~", "*", "`")
 
 _LEADING_RE = re.compile(r"^(\s*)([-+*] |\d+[.)] |[#>])")
@@ -64,7 +64,7 @@ _LEADING_RE = re.compile(r"^(\s*)([-+*] |\d+[.)] |[#>])")
 # entities
 # --------------------------------------------------------------------------- #
 def normalize_entities(content_state: dict) -> Dict[str, dict]:
-    """Return ``{str(key): entity}`` whatever shape ``entityMap`` has (坑 C1)."""
+    """Return ``{str(key): entity}`` whatever shape ``entityMap`` has (pitfall C1)."""
     raw = (content_state or {}).get("entityMap") or {}
     out: Dict[str, dict] = {}
 
@@ -80,17 +80,17 @@ def normalize_entities(content_state: dict) -> Dict[str, dict]:
         value = item.get("value")
         if isinstance(value, dict):
             key = item.get("key")
-            if key is None and "type" in item:  # 已经是扁平 {key: value}
+            if key is None and "type" in item:  # already a flat {key: value}
                 continue
             out[str(key)] = value
         elif "type" in item:
-            # 兜底：少见形态，整条当实体，key 取 key/id
+            # Fallback for a rare shape: treat the whole item as the entity
             out[str(item.get("key", len(out)))] = item
     return out
 
 
 def _with_size(url: str) -> str:
-    """Append X's ``?format=jpg&name=large`` sizing parameters (坑 D8)."""
+    """Append X's ``?format=jpg&name=large`` sizing parameters (pitfall D8)."""
     if not url:
         return url
     if "pbs.twimg.com" not in url:
@@ -135,7 +135,7 @@ def _media_id(media: dict) -> Optional[str]:
 
 
 def media_map_from(article_result: dict) -> Dict[str, str]:
-    """``media_id -> best URL`` from ``media_entities`` + ``cover_media`` (坑 D7)."""
+    """``media_id -> best URL`` from ``media_entities`` + ``cover_media`` (pitfall D7)."""
     media: Dict[str, str] = {}
     for entity in (article_result or {}).get("media_entities") or []:
         mid = _media_id(entity)
@@ -177,7 +177,7 @@ def _apply_marks(text: str, marks: Iterable[str]) -> str:
 
 
 def _escape_leading(text: str) -> str:
-    """Escape markdown structural characters at line starts (坑 C9)."""
+    """Escape markdown structural characters at line starts (pitfall C9)."""
     if not text:
         return text
     match = _LEADING_RE.match(text)
@@ -192,7 +192,7 @@ def _escape_lines(text: str) -> str:
 
 
 def _link_target(entity: dict, chunk: str) -> Tuple[str, Optional[str]]:
-    """Return ``(url, label_override)`` for a LINK/TWEET entity (坑 C10)."""
+    """Return ``(url, label_override)`` for a LINK/TWEET entity (pitfall C10)."""
     data = (entity or {}).get("data") or {}
     kind = str((entity or {}).get("type") or "").upper()
     url = data.get("url") or data.get("expanded_url") or data.get("href") or ""
@@ -202,7 +202,7 @@ def _link_target(entity: dict, chunk: str) -> Tuple[str, Optional[str]]:
         return "", None
     text = (chunk or "").strip()
     if kind == "LINK" and "t.co/" in url and text.startswith(("http://", "https://")):
-        return text, None  # 坑 C10: 用可见 URL 代替短链
+        return text, None  # pitfall C10: prefer the visible URL over a shortlink
     return url, None
 
 
@@ -210,7 +210,7 @@ def render_inline(block: dict, entities: Dict[str, dict], *, style: bool = True)
     """Render one block's text with inline styles and link entities.
 
     Each character is emitted exactly once, so overlapping ranges can never
-    duplicate text (坑 C11); the innermost (latest-start) link wins.
+    duplicate text (pitfall C11); the innermost (latest-start) link wins.
     """
     text = block.get("text") or ""
     if not text:
@@ -281,7 +281,7 @@ def render_inline(block: dict, entities: Dict[str, dict], *, style: bool = True)
 # block rendering
 # --------------------------------------------------------------------------- #
 def _render_list_run(run: Sequence[dict], kind: str, entities: Dict[str, dict]) -> List[str]:
-    """Consecutive same-kind list items -> lines with depth indentation (坑 C3/C6)."""
+    """Consecutive same-kind list items -> lines with depth indentation (pitfall C3/C6)."""
     lines: List[str] = []
     counters: Dict[int, int] = {}
     for block in run:
@@ -318,7 +318,7 @@ def _render_atomic(
     """Render an ``atomic`` block -> ``(lines, warnings, used_media_id)``."""
     ranges = [r for r in block.get("entityRanges") or [] if isinstance(r, dict)]
     if not ranges:
-        return [], ["atomic 块没有 entityRanges，已跳过"], None
+        return [], ["atomic block has no entityRanges, skipped"], None
 
     lines: List[str] = []
     warnings: List[str] = []
@@ -338,9 +338,9 @@ def _render_atomic(
         if kind == "TWEET" or data.get("tweetId"):
             tweet_id = data.get("tweetId")
             if tweet_id:
-                lines.append("> [嵌入推文](https://x.com/i/status/%s)" % tweet_id)
+                lines.append("> [Embedded tweet](https://x.com/i/status/%s)" % tweet_id)
             else:
-                warnings.append("atomic TWEET 实体缺少 tweetId，已跳过")
+                warnings.append("atomic TWEET entity has no tweetId, skipped")
             continue
 
         if kind in ("IMAGE", "VIDEO", "GIF", "MEDIA"):
@@ -350,17 +350,17 @@ def _render_atomic(
                 url = data.get("url") or data.get("original_img_url")
             if not url:
                 warnings.append(
-                    "atomic 媒体 %s 找不到 URL，已跳过" % (media_id or kind)
+                    "atomic media %s has no URL, skipped" % (media_id or kind)
                 )
                 continue
             lines.append("![](%s)" % url)
             if media_id:
                 used = media_id
             if kind in ("VIDEO", "GIF"):
-                warnings.append("atomic %s 仅保留封面图：%s" % (kind, media_id or url))
+                warnings.append("atomic %s keeps only its poster image: %s" % (kind, media_id or url))
             continue
 
-        warnings.append("未知 atomic entity 类型 %r，已跳过" % (kind or "?"))
+        warnings.append("unknown atomic entity type %r, skipped" % (kind or "?"))
     return lines, warnings, used
 
 
@@ -380,7 +380,7 @@ def render_block(
     if kind == "blockquote":
         inline = render_inline(block, entities)
         lines = inline.split("\n") if inline else [""]
-        # 坑 C4: 每一行都要加 "> "
+        # Pitfall C4: every line needs the "> " prefix
         return [("> " + line).rstrip() if line.strip() else ">" for line in lines]
 
     if kind == "code-block":
@@ -402,7 +402,7 @@ def blocks_to_markdown(
 
     Output invariant: every block yields a fragment ending in ``"\\n"`` and the
     result is ``"\\n".join(parts).strip() + "\\n"`` -- blocks are therefore
-    separated by exactly one blank line (坑 C3).
+    separated by exactly one blank line (pitfall C3).
     """
     media = media or {}
     parts: List[str] = []
@@ -432,7 +432,7 @@ def blocks_to_markdown(
             continue
 
         if kind not in SUPPORTED_BLOCKS:
-            warnings.append("未知 block 类型 %r，已按段落降级" % kind)
+            warnings.append("unknown block type %r, rendered as a paragraph" % kind)
             lines = render_block(dict(block, type="unstyled"), entities, media)
         elif kind == "atomic":
             lines, block_warnings, media_id = _render_atomic(block, entities, media)
@@ -453,7 +453,7 @@ def blocks_to_markdown(
 def plain_text_from_blocks(
     blocks: Sequence[dict], entities: Optional[Dict[str, dict]] = None
 ) -> str:
-    """Plain text (for ``chars``, 坑 D10) -- no markdown syntax counted."""
+    """Plain text (for ``chars``, pitfall D10) -- no markdown syntax counted."""
     entities = entities or {}
     chunks: List[str] = []
     for block in blocks:
@@ -477,7 +477,7 @@ def convert_article(
 ) -> Tuple[str, List[Tuple[str, str]], List[str]]:
     """``article_result`` -> ``(body_md, [(media_id, url)], warnings)``.
 
-    If the first block repeats the article title (坑 C8), it is dropped because
+    If the first block repeats the article title (pitfall C8), it is dropped because
     the bundle template already renders ``# <title>``.
     """
     state = (article_result or {}).get("content_state") or {}

@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -15,8 +15,6 @@ from . import auth, download, listing
 from .errors import ConfigError, XadlError
 
 logger = logging.getLogger(__name__)
-
-BEIJING = timezone(timedelta(hours=8))
 
 EXIT_OK = 0
 EXIT_PARTIAL = 1
@@ -29,45 +27,45 @@ def _version() -> str:
         from importlib.metadata import version
 
         return version("x-article-dl")
-    except Exception:  # 源码目录直接跑
-        return "0.1.1"
+    except Exception:  # running from a source checkout
+        return "0.1.2"
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="x-article-dl",
-        description="下载某个 X（Twitter）博主的全部 Articles，转成 Markdown（仅走私有 GraphQL API）。",
+        description="Download all Articles of an X (Twitter) user as Markdown (private GraphQL API only).",
     )
-    parser.add_argument("handle", help="博主 handle，可带 @，如 @eng_khairallah1")
+    parser.add_argument("handle", help="user handle, with or without @ (e.g. @eng_khairallah1)")
     parser.add_argument(
         "--outdir",
         default=None,
-        help="输出目录（默认 ./out/<handle>_articles）",
+        help="output directory (default: ./out/<handle>_articles)",
     )
-    parser.add_argument("--limit", type=int, default=0, help="只下最新 N 篇（0=全部）")
+    parser.add_argument("--limit", type=int, default=0, help="only the newest N articles (0 = all)")
 
-    net = parser.add_argument_group("网络")
-    net.add_argument("--proxy", default=None, help="代理地址，如 http://127.0.0.1:7897（默认直连；也可用 XADL_PROXY / HTTPS_PROXY）")
-    net.add_argument("--no-proxy", action="store_true", help="直连，不使用代理")
-    net.add_argument("--timeout", type=float, default=30.0, help="单请求超时秒数（默认 30）")
-    net.add_argument("--retries", type=int, default=3, help="失败重试次数（默认 3）")
-    net.add_argument("--ua", default=None, help="自定义 User-Agent（默认 Chrome 126）")
-    net.add_argument("--no-wait", action="store_true", help="不等待：不限流等待、篇间不 sleep")
+    net = parser.add_argument_group("network")
+    net.add_argument("--proxy", default=None, help="proxy URL, e.g. http://127.0.0.1:7897 (direct by default; XADL_PROXY / HTTPS_PROXY also work)")
+    net.add_argument("--no-proxy", action="store_true", help="force a direct connection")
+    net.add_argument("--timeout", type=float, default=30.0, help="per-request timeout in seconds (default: 30)")
+    net.add_argument("--retries", type=int, default=3, help="retry attempts for failed requests (default: 3)")
+    net.add_argument("--ua", default=None, help="custom User-Agent (default: Chrome 126)")
+    net.add_argument("--no-wait", action="store_true", help="do not wait: no rate-limit sleeps and no inter-article delay")
 
-    cred = parser.add_argument_group("认证")
-    cred.add_argument("--cookies", default=None, help="Netscape cookies 文件（默认自动探测）")
-    cred.add_argument("--bearer", default=None, help="手工指定 Bearer（默认从 gallery-dl 源码读取）")
-    cred.add_argument("--user-id", default=None, help="直填 userId，跳过 UserByScreenName")
+    cred = parser.add_argument_group("authentication")
+    cred.add_argument("--cookies", default=None, help="Netscape cookie file (auto-detected by default)")
+    cred.add_argument("--bearer", default=None, help="bearer token (default: read from gallery-dl's source)")
+    cred.add_argument("--user-id", default=None, help="userId to skip the UserByScreenName lookup")
 
-    out = parser.add_argument_group("输出")
-    out.add_argument("--force", action="store_true", help="忽略已有 page.json，强制重下")
-    out.add_argument("--no-images", action="store_true", help="不下载图片，保留远端 URL")
-    out.add_argument("--save-raw", action="store_true", help="保存原始 GraphQL 响应 raw.json（含敏感数据）")
-    out.add_argument("--json", action="store_true", help="stdout 输出机器可读汇总")
-    out.add_argument("--delay", type=float, default=1.0, help="篇间间隔秒数（默认 1.0）")
+    out = parser.add_argument_group("output")
+    out.add_argument("--force", action="store_true", help="ignore existing page.json and re-download")
+    out.add_argument("--no-images", action="store_true", help="keep remote image URLs instead of downloading")
+    out.add_argument("--save-raw", action="store_true", help="save the raw GraphQL response as raw.json (contains sensitive data)")
+    out.add_argument("--json", action="store_true", help="print a machine-readable summary to stdout")
+    out.add_argument("--delay", type=float, default=1.0, help="delay between articles in seconds (default: 1.0)")
 
-    parser.add_argument("-q", "--quiet", action="store_true", help="只打警告和错误")
-    parser.add_argument("-v", "--verbose", action="store_true", help="打印调试细节")
+    parser.add_argument("-q", "--quiet", action="store_true", help="warnings and errors only")
+    parser.add_argument("-v", "--verbose", action="store_true", help="debug details")
     parser.add_argument("--version", action="version", version="x-article-dl " + _version())
     return parser
 
@@ -92,8 +90,9 @@ def _build_client(args: argparse.Namespace):
     except ConfigError:
         if args.bearer:
             raise ConfigError(
-                "列表接口必须使用登录会话（OAuth2Session），仅 --bearer 不够；"
-                "请用 --cookies 指定含 auth_token 与 ct0 的 Netscape cookies 文件。"
+                "the listing endpoint requires an authenticated session (OAuth2Session); "
+                "--bearer alone is not enough. Pass a Netscape cookie file containing "
+                "auth_token and ct0 via --cookies."
             )
         raise
     bearer = args.bearer or auth.read_bearer()
@@ -115,7 +114,7 @@ def _build_client(args: argparse.Namespace):
 
 
 def _iter_refs(args, client, handle: str):
-    """Resolve the user (unless ``--user-id``) and stream article refs (坑 CLI1)."""
+    """Resolve the user (unless ``--user-id``) and stream article refs (pitfall CLI1)."""
     if args.user_id:
         user_id: Optional[str] = str(args.user_id)
         screen_name = handle
@@ -143,16 +142,16 @@ def _write_index(
 ) -> Path:
     ok = len(results)
     total = ok + len(failures)
-    now = datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M (+08:00)")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     lines = [
-        "# @%s 的 X Articles（%d/%d 篇）" % (handle, ok, total),
+        "# X Articles by @%s (%d/%d)" % (handle, ok, total),
         "",
-        "- 抓取时间：%s（北京时间）" % now,
-        "- 工具：x-article-dl %s" % _version(),
-        "- 来源：https://x.com/%s/articles" % handle,
+        "- Fetched at: %s (UTC)" % now,
+        "- Tool: x-article-dl %s" % _version(),
+        "- Source: https://x.com/%s/articles" % handle,
         "",
-        "| # | 标题 | 字数 | 图 | 链接 |",
-        "|---|------|------|----|------|",
+        "| # | Title | Chars | Images | Link |",
+        "|---|-------|-------|--------|------|",
     ]
     for number, article in enumerate(results, start=1):
         title = (article.title or "(untitled)").replace("|", "\\|").strip()
@@ -162,7 +161,7 @@ def _write_index(
             % (number, title, article.chars, images, article.tweet_id)
         )
     if failures:
-        lines += ["", "## 失败清单"]
+        lines += ["", "## Failures"]
         for ref, reason in failures:
             lines.append("- %s — %s（%s）" % (ref.tweet_id, reason, ref.url))
     lines.append("")
@@ -177,7 +176,7 @@ def _write_index(
 def _run(args: argparse.Namespace) -> int:
     handle = (args.handle or "").strip().lstrip("@")
     if not handle:
-        raise ConfigError("handle 不能为空")
+        raise ConfigError("handle must not be empty")
 
     outdir = Path(
         args.outdir or (Path("out") / ("%s_articles" % handle))
@@ -212,13 +211,13 @@ def _run(args: argparse.Namespace) -> int:
             )
         except XadlError as exc:
             reason = "%s: %s" % (type(exc).__name__, exc)
-            logger.warning("[%d] %s 失败：%s", number, ref.tweet_id, reason)
+            logger.warning("[%d] %s failed: %s", number, ref.tweet_id, reason)
             failures.append((ref, reason))
             continue
 
         results.append(article)
         logger.info(
-            "[%d] %s %s（%d 字，%d 图，%.1fs）",
+            "[%d] %s %s (%d chars, %d image(s), %.1fs)",
             number,
             article.tweet_id,
             article.title[:60],
@@ -243,7 +242,7 @@ def _run(args: argparse.Namespace) -> int:
         exit_code = EXIT_OK
 
     index_path = _write_index(outdir, screen_name, results, failures)
-    logger.info("完成：%d 成功 / %d 失败 → %s", ok, failed, index_path)
+    logger.info("done: %d succeeded / %d failed -> %s", ok, failed, index_path)
 
     if args.json:
         print(
@@ -294,7 +293,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         return exc.exit_code
     except KeyboardInterrupt:
-        logger.error("已中断")
+        logger.error("interrupted")
         return 130
 
 

@@ -37,8 +37,9 @@ from .errors import (
 
 logger = logging.getLogger(__name__)
 
-# TweetResultByRestId: withArticleRichContentState=true 是拿到全篇正文的
-# **唯一**开关（坑 D1）。features/fieldToggles 常量集中在 _endpoints.py。
+# TweetResultByRestId: withArticleRichContentState=true is the only switch that
+# returns the full body (pitfall D1). Feature/field-toggle constants live in
+# _endpoints.py.
 TWEET_VARIABLES = {
     "withCommunity": False,
     "includePromotedContent": False,
@@ -53,7 +54,7 @@ _CTYPE_EXT = {
     "image/gif": ".gif",
 }
 _URL_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif)$", re.IGNORECASE)
-_MIN_IMAGE_BYTES = 2048  # 小于此值基本是占位图（坑 D14）
+_MIN_IMAGE_BYTES = 2048  # anything smaller is a placeholder (pitfall D14)
 
 
 # --------------------------------------------------------------------------- #
@@ -61,10 +62,10 @@ _MIN_IMAGE_BYTES = 2048  # 小于此值基本是占位图（坑 D14）
 # --------------------------------------------------------------------------- #
 @dataclass
 class ImageAsset:
-    index: int  # 1-based -> img_01.jpg；封面为 0 -> img_00.jpg
+    index: int  # 1-based -> img_01.jpg; the cover is 0 -> img_00.jpg
     media_id: str
     remote_url: str
-    local_path: Optional[str] = None  # 相对 bundle："img/img_01.jpg"；失败为 None
+    local_path: Optional[str] = None  # relative to the bundle: "img/img_01.jpg"; None on failure
     is_cover: bool = False
     bytes: int = 0
 
@@ -93,7 +94,7 @@ class Article:
 # payload parsing (pure, unit-testable)
 # --------------------------------------------------------------------------- #
 def _parse_twitter_date(value: Optional[str]) -> Optional[str]:
-    """``Mon Oct 19 09:35:56 +0000 2026`` -> ISO8601 UTC (坑 D12)."""
+    """``Mon Oct 19 09:35:56 +0000 2026`` -> ISO8601 UTC (pitfall D12)."""
     if not value:
         return None
     try:
@@ -116,35 +117,35 @@ def _author_of(tweet: dict) -> Tuple[str, str]:
 def parse_article_payload(payload: dict) -> dict:
     """Unwrap the GraphQL response down to the ``article_results.result`` dict.
 
-    Handles the ``TweetWithVisibilityResults`` wrapper (坑 D4), tombstones and
-    non-article tweets (坑 D5), and empty ``blocks`` (坑 D6).
+    Handles the ``TweetWithVisibilityResults`` wrapper (pitfall D4), tombstones and
+    non-article tweets (pitfall D5), and empty ``blocks`` (pitfall D6).
     """
     data = (payload or {}).get("data", payload) or {}
     result = ((data.get("tweetResult") or {}).get("result")) or {}
     if not result:
-        raise TweetUnavailableError("响应里没有 tweetResult.result")
+        raise TweetUnavailableError("response has no tweetResult.result")
 
     typename = result.get("__typename") or ""
     if typename in ("TweetTombstone", "TweetUnavailable"):
         reason = (result.get("tombstone") or {}).get("text") or typename
-        raise TweetUnavailableError("推文不可用：%s" % reason)
+        raise TweetUnavailableError("tweet unavailable: %s" % reason)
 
     tweet = result.get("tweet", result) if typename == "TweetWithVisibilityResults" else result.get("tweet", result)
     if not isinstance(tweet, dict):
-        raise TweetUnavailableError("tweetResult 结构异常")
+        raise TweetUnavailableError("unexpected tweetResult structure")
 
     article = tweet.get("article")
     if not article:
-        raise NotAnArticleError("这条推文不是 Article（没有 article 字段）")
+        raise NotAnArticleError("this tweet is not an Article (no article field)")
 
     article_result = ((article.get("article_results") or {}).get("result")) or {}
     if not article_result:
-        raise NotAnArticleError("article_results.result 为空")
+        raise NotAnArticleError("article_results.result is empty")
 
     state = article_result.get("content_state") or {}
     blocks = state.get("blocks") or []
     if not blocks:
-        raise ArticleEmptyError("article 的 content_state.blocks 为空")
+        raise ArticleEmptyError("article content_state.blocks is empty")
 
     handle, name = _author_of(tweet)
     legacy = tweet.get("legacy") or {}
@@ -171,7 +172,7 @@ def parse_article_payload(payload: dict) -> dict:
 # fetch
 # --------------------------------------------------------------------------- #
 def _fetch_payload(client, tweet_id: str, *, use_guest: bool) -> dict:
-    """Try guest first, fall back to the session (or the reverse, 坑 D1)."""
+    """Try guest first, fall back to the session (or the reverse, pitfall D1)."""
     variables = dict(TWEET_VARIABLES, tweetId=str(tweet_id))
     order = [True, False] if use_guest else [False, True]
     last: Optional[Exception] = None
@@ -183,10 +184,10 @@ def _fetch_payload(client, tweet_id: str, *, use_guest: bool) -> dict:
             )
         except (AuthError, RateLimitError, NetworkError) as exc:
             last = exc
-            logger.debug("guest=%s 失败（%s），换另一种身份重试", guest, exc)
+            logger.debug("guest=%s failed (%s), retrying as the other identity", guest, exc)
     if last is not None:
         raise last
-    raise NetworkError("请求 TweetResultByRestId 失败")
+    raise NetworkError("TweetResultByRestId request failed")
 
 
 def fetch_article(client, tweet_id: str, *, use_guest: bool = True) -> Article:
@@ -217,7 +218,7 @@ def fetch_article(client, tweet_id: str, *, use_guest: bool = True) -> Article:
         )
 
     if not body_md.strip():
-        raise ArticleEmptyError("converter 产出的正文为空")
+        raise ArticleEmptyError("converter produced an empty body")
 
     return Article(
         tweet_id=str(tweet_id),
@@ -246,7 +247,7 @@ def fetch_article(client, tweet_id: str, *, use_guest: bool = True) -> Article:
 # images
 # --------------------------------------------------------------------------- #
 def _ext_for(content_type: Optional[str], url: str) -> str:
-    """Content-Type first, URL suffix second (坑 D9)."""
+    """Content-Type first, URL suffix second (pitfall D9)."""
     if content_type:
         ext = _CTYPE_EXT.get(content_type.split(";")[0].strip().lower())
         if ext:
@@ -264,7 +265,7 @@ def _download_image(
     """Download one image -> ``(relative_path, bytes)``."""
     data, content_type = client.get_bytes_with_type(url, referer=referer)
     if len(data) < _MIN_IMAGE_BYTES:
-        raise ImageDownloadError("图片过小（%d 字节），疑似占位图" % len(data))
+        raise ImageDownloadError("image too small (%d bytes), probably a placeholder" % len(data))
     ext = _ext_for(content_type, url)
     dest = img_dir / ("img_%02d%s" % (index, ext))
     tmp = dest.with_name(dest.name + ".tmp")
@@ -282,8 +283,8 @@ def _tool_version() -> str:
         from importlib.metadata import version
 
         return version("x-article-dl")
-    except Exception:  # 未安装（源码目录直接运行）
-        return "0.1.1"
+    except Exception:  # not installed (running from a source checkout)
+        return "0.1.2"
 
 
 def _yaml_str(value: Optional[str]) -> str:
@@ -376,7 +377,7 @@ def _load_cached(bundle_dir: Path) -> Optional[Article]:
     try:
         page = json.loads(page_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        logger.warning("page.json 损坏，将重下：%s（%s）", page_path, exc)
+        logger.warning("corrupt page.json, re-downloading: %s (%s)", page_path, exc)
         return None
 
     images: List[ImageAsset] = []
@@ -430,8 +431,8 @@ def download_article(
 ) -> Article:
     """Fetch, download images and write ``<outdir>/<tweet_id>/``.
 
-    An existing bundle is reused unless ``force`` (坑 D13).  A failed image only
-    produces a warning; the download never aborts because of it (坑 D14).
+    An existing bundle is reused unless ``force`` (pitfall D13).  A failed image only
+    produces a warning; the download never aborts because of it (pitfall D14).
     """
     outdir = Path(outdir)
     bundle_dir = outdir / str(tweet_id)
@@ -439,7 +440,7 @@ def download_article(
     if not force:
         cached = _load_cached(bundle_dir)
         if cached is not None:
-            logger.info("已存在，跳过：%s", bundle_dir)
+            logger.info("already exists, skipping: %s", bundle_dir)
             if tweet_url:
                 cached.tweet_url = tweet_url
             return cached
@@ -462,8 +463,8 @@ def download_article(
                     "](%s)" % asset.remote_url, "](%s)" % relative
                 )
             except XadlError as exc:
-                article.warnings.append("图片下载失败 %s：%s" % (asset.remote_url, exc))
-                logger.warning("图片失败 %s：%s", asset.remote_url, exc)
+                article.warnings.append("image download failed %s: %s" % (asset.remote_url, exc))
+                logger.warning("image failed %s: %s", asset.remote_url, exc)
             if image_delay:
                 time.sleep(image_delay)
 

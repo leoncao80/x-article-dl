@@ -31,8 +31,9 @@ from .errors import AuthError, ConfigError, GraphQLAPIError, NetworkError, RateL
 
 logger = logging.getLogger(__name__)
 
-# 默认直连（适配绝大多数环境）；需要代理时用 --proxy / XADL_PROXY / HTTPS_PROXY。
-# 历史背景：在受限网络里跑过 127.0.0.1:7897，但那属于使用者自己的配置，不应作为默认（坑 A8）。
+# Direct connection by default (works for most environments); configure a proxy
+# via --proxy / XADL_PROXY / HTTPS_PROXY only when needed. Hard-coding a local
+# 127.0.0.1:7897 would break every other user (pitfall A8).
 DEFAULT_PROXY: Optional[str] = None
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -41,7 +42,7 @@ DEFAULT_UA = (
 COOKIE_ENV = "XADL_COOKIES"
 PROXY_ENV = "XADL_PROXY"
 SSL_NO_VERIFY_ENV = "XADL_SSL_NO_VERIFY"
-# 只接受这些 cookie 域（精确匹配或子域，坑 A2/A4）
+# Only these cookie domains are accepted (exact match or subdomain, pitfalls A2/A4)
 X_DOMAINS = ("x.com", "twitter.com")
 
 GALLERY_DL_CANDIDATES = (
@@ -53,15 +54,16 @@ GALLERY_DL_CANDIDATES = (
     "/usr/local/lib/python3*/dist-packages/gallery_dl/extractor/twitter.py",
 )
 
-# gallery-dl 把 Bearer 写成相邻多段字符串拼接：
+# gallery-dl stores the bearer as adjacent string literals:
 #     "authorization": (
 #         "AAAAAAAA..."
 #         "1Zv7ttfk..."
 #     ),
-# 只抓第一段会得到被截断的 token，所有请求 401（坑 A1）。
+# Matching only the first segment yields a truncated token and every request
+# returns 401 (pitfall A1).
 _BEARER_RE = re.compile(r'"authorization"\s*:\s*\(?\s*((?:\s*"[^"]*"\s*)+)')
 _QUOTED_RE = re.compile(r'"([^"]*)"')
-# gallery-dl 写的是 "/graphql/<qid>/<op>"（无 /i/api 前缀），两种形态都兼容。
+# gallery-dl writes "/graphql/<qid>/<op>" (no /i/api prefix); accept both shapes.
 _QUERY_ID_RE = r'/graphql/([A-Za-z0-9_-]+)/{}"'
 
 
@@ -80,7 +82,7 @@ def mask(token: Optional[str]) -> str:
 def resolve_proxy(cli_proxy: Optional[str] = None, *, no_proxy: bool = False) -> Optional[str]:
     """Resolve the proxy URL: ``--proxy`` > ``XADL_PROXY`` > ``HTTPS_PROXY`` > default.
 
-    Returns ``None`` when the caller asked for a direct connection (坑 A8).
+    Returns ``None`` when the caller asked for a direct connection (pitfall A8).
     """
     if no_proxy:
         return None
@@ -129,12 +131,12 @@ def locate_gallery_dl_twitter(path=None) -> Path:
     """Find gallery-dl's ``extractor/twitter.py``.
 
     Order: explicit path -> the already imported package -> glob candidates
-    (newest mtime first) -> importlib.metadata (坑 A5).
+    (newest mtime first) -> importlib.metadata (pitfall A5).
     """
     if path:
         candidate = Path(path).expanduser()
         if not candidate.is_file():
-            raise ConfigError("指定的 gallery-dl twitter.py 不存在：%s" % candidate)
+            raise ConfigError("the given gallery-dl twitter.py does not exist: %s" % candidate)
         return candidate
 
     try:  # if gallery-dl is importable we know exactly where it lives
@@ -159,10 +161,10 @@ def locate_gallery_dl_twitter(path=None) -> Path:
             pass
     if not found:
         raise ConfigError(
-            "未找到 gallery-dl 的 twitter.py（Bearer 来源）。请 pip install gallery-dl，"
-            "或用 --bearer 显式传入 Bearer token。"
+            "could not find gallery-dl's twitter.py (the bearer source). Install it "
+            "with `pip install gallery-dl`, or pass --bearer explicitly."
         )
-    # 多命中时取 mtime 最新的一份，避免读到旧版本（坑 A5）
+    # With multiple matches prefer the newest mtime, never an old copy (pitfall A5)
     found.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     return Path(found[0])
 
@@ -172,7 +174,7 @@ def _read_source(path=None) -> Tuple[Path, str]:
     try:
         return src_path, src_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        raise ConfigError("读取失败 %s：%s" % (src_path, exc)) from exc
+        raise ConfigError("failed to read %s: %s" % (src_path, exc)) from exc
 
 
 def read_bearer(path=None, *, min_len: int = 50) -> str:
@@ -180,15 +182,15 @@ def read_bearer(path=None, *, min_len: int = 50) -> str:
     src_path, src = _read_source(path)
     match = _BEARER_RE.search(src)
     if not match:
-        raise ConfigError("在 %s 里没找到 Bearer token（gallery-dl 可能改了写法）" % src_path)
+        raise ConfigError("no bearer token found in %s (gallery-dl may have changed)" % src_path)
     token = "".join(_QUOTED_RE.findall(match.group(1)))
     if token.lower().startswith("bearer "):
         token = token[len("bearer ") :]
     token = token.strip()
-    # 注意：不要 unquote %3D —— X 期望的就是百分号编码后的形态。
+    # Do not unquote %3D -- X expects the percent-encoded form.
     if len(token) < min_len:
         raise ConfigError(
-            "读到的 Bearer 疑似不完整（长度 %d < %d）" % (len(token), min_len)
+            "the bearer token looks truncated (%d < %d chars)" % (len(token), min_len)
         )
     logger.debug("bearer loaded from %s (%s)", src_path, mask(token))
     return token
@@ -212,7 +214,8 @@ def default_cookie_path() -> Path:
     candidates = []
     env = os.environ.get(COOKIE_ENV)
     if env:
-        # 显式指定就不静默回退 —— 否则报错信息指向的是另一个路径（坑 A4）
+        # When explicitly configured, never fall back silently -- otherwise the
+        # error message points at a different path (pitfall A4)
         return Path(env).expanduser()
     candidates.append(Path.cwd() / "x_cookies.txt")
     candidates.append(Path("~/.config/x-article-dl/cookies.txt").expanduser())
@@ -225,7 +228,7 @@ def default_cookie_path() -> Path:
 def _is_x_domain(domain: str) -> bool:
     """True for x.com / twitter.com and any of their subdomains.
 
-    不能用 `"x.com" in domain`：netflix.com 也包含子串 "x.com"。
+    Do not use `"x.com" in domain`: netflix.com also contains the substring "x.com".
     """
     d = domain.lower().lstrip(".")
     return any(d == base or d.endswith("." + base) for base in X_DOMAINS)
@@ -235,13 +238,13 @@ def load_cookies(path=None) -> Dict[str, str]:
     """Parse a Netscape cookie file into ``{name: value}``.
 
     ``#HttpOnly_`` lines must survive the comment filter: ``auth_token`` is
-    HttpOnly, and dropping it means every authenticated call returns 401 (坑 A2).
+    HttpOnly, and dropping it means every authenticated call returns 401 (pitfall A2).
     """
     cookie_path = Path(path).expanduser() if path else default_cookie_path()
     if not cookie_path.is_file():
         raise ConfigError(
-            "找不到 cookie 文件 %s。请从浏览器导出 Netscape 格式的 cookies（需含 "
-            "auth_token 与 ct0），或用 --cookies 指定路径。" % cookie_path
+            "cookie file %s not found. Export Netscape cookies from your browser "
+            "(must include auth_token and ct0), or pass --cookies." % cookie_path
         )
 
     cookies: Dict[str, str] = {}
@@ -249,13 +252,13 @@ def load_cookies(path=None) -> Dict[str, str]:
     try:
         lines = cookie_path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as exc:
-        raise ConfigError("读取 cookie 文件失败 %s：%s" % (cookie_path, exc)) from exc
+        raise ConfigError("failed to read cookie file %s: %s" % (cookie_path, exc)) from exc
 
     for raw in lines:
         line = raw.strip("\r\n")
         if not line.strip():
             continue
-        # 坑 A2：先剥掉 #HttpOnly_ 前缀，再判断是否注释行
+        # Pitfall A2: strip the #HttpOnly_ prefix before the comment check
         if line.startswith("#HttpOnly_"):
             line = line[len("#HttpOnly_") :]
         elif line.lstrip().startswith("#"):
@@ -276,12 +279,12 @@ def load_cookies(path=None) -> Dict[str, str]:
     missing = [n for n in ("auth_token", "ct0") if not cookies.get(n)]
     if missing:
         raise ConfigError(
-            "cookie 文件 %s 缺少 %s（需要已登录的 X 会话）"
+            "cookie file %s is missing %s (an authenticated X session is required)"
             % (cookie_path, " / ".join(missing))
         )
     ct0 = cookies.get("ct0", "")
-    if ct0 and len(ct0) != 160:  # 160 is the usual length; warn but continue（坑 A4）
-        logger.warning("ct0 长度异常（%d），可能不是完整的会话 cookie", len(ct0))
+    if ct0 and len(ct0) != 160:  # 160 is the usual length; warn but continue (pitfall A4)
+        logger.warning("unusual ct0 length (%d), the session cookie may be incomplete", len(ct0))
     logger.debug("cookies loaded from %s: %s", cookie_path, sorted(cookies))
     return cookies
 
@@ -302,15 +305,15 @@ def build_headers(
         return headers
 
     if not creds.has_session:
-        raise AuthError("缺少 auth_token/ct0，无法进行会话认证")
+        raise AuthError("missing auth_token/ct0, cannot authenticate the session")
     headers.update(
         {
-            # 坑 A3：缺这个头 UserArticlesTweets 直接 401
+            # Pitfall A3: without this header UserArticlesTweets returns 401
             "x-twitter-auth-type": "OAuth2Session",
             "x-twitter-active-user": "yes",
             "x-twitter-client-language": "en",
             "x-csrf-token": creds.ct0 or "",
-            # 坑 A4：ct0 必须同时出现在 header 与 cookie 里，且同属一个会话
+            # Pitfall A4: ct0 must appear in both header and cookie, from one session
             "Cookie": "auth_token=%s; ct0=%s" % (creds.auth_token, creds.ct0),
         }
     )
@@ -323,7 +326,7 @@ def build_headers(
 def _build_ssl_context() -> ssl.SSLContext:
     ctx = ssl.create_default_context()
     if os.environ.get(SSL_NO_VERIFY_ENV, "").lower() in ("1", "true", "yes"):
-        logger.warning("%s 已启用：跳过 TLS 证书校验（仅用于自签代理）", SSL_NO_VERIFY_ENV)
+        logger.warning("%s is set: TLS certificate verification is disabled (self-signed proxies only)", SSL_NO_VERIFY_ENV)
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
     return ctx
@@ -332,8 +335,8 @@ def _build_ssl_context() -> ssl.SSLContext:
 class XClient:
     """Small HTTP client for X's private GraphQL API.
 
-    One opener for the whole run (坑 L10): ``ProxyHandler`` is always explicit so
-    environment proxy variables cannot hijack the connection (坑 A9).
+    One opener for the whole run (pitfall L10): ``ProxyHandler`` is always explicit so
+    environment proxy variables cannot hijack the connection (pitfall A9).
     """
 
     def __init__(
@@ -352,7 +355,7 @@ class XClient:
             logger.debug("using proxy %s", proxy)
             proxy_handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
         else:
-            # 显式禁用环境变量里的代理（坑 A9）
+            # Explicitly drop environment proxies (pitfall A9)
             proxy_handler = urllib.request.ProxyHandler({})
         self._opener = urllib.request.build_opener(
             proxy_handler, urllib.request.HTTPSHandler(context=_build_ssl_context())
@@ -379,7 +382,7 @@ class XClient:
                 stat = src_path.stat()
                 key = (str(src_path), stat.st_mtime, stat.st_size, bearer)
                 if self._bearer_cache is not None and self._bearer_cache[:3] != key[:3]:
-                    logger.info("gallery-dl 源码已更新，重新读取 Bearer")
+                    logger.info("gallery-dl source changed, re-reading the bearer")
                     return self.credentials(refresh=True)
                 self._bearer_cache = key
             except (ConfigError, OSError):
@@ -395,13 +398,13 @@ class XClient:
 
     # -- guest token -------------------------------------------------------- #
     def guest_token(self, *, refresh: bool = False) -> str:
-        """Fetch / cache a guest token (IP scoped, ~3h lifetime; 坑 A7)."""
+        """Fetch / cache a guest token (IP scoped, ~3h lifetime; pitfall A7)."""
         if self._guest_token and not refresh:
             return self._guest_token
         creds = self.credentials()
         req = urllib.request.Request(
             "https://api.x.com/1.1/guest/activate.json",
-            data=b"",  # 必须空体 POST，且绝不带 cookie
+            data=b"",  # must be an empty-body POST, and never send cookies
             method="POST",
             headers={
                 "authorization": "Bearer " + creds.bearer,
@@ -415,10 +418,10 @@ class XClient:
         except urllib.error.HTTPError as exc:
             raise self._http_error(exc, session=False) from exc
         except (urllib.error.URLError, OSError) as exc:
-            raise NetworkError("获取 guest token 失败：%s" % exc) from exc
+            raise NetworkError("failed to obtain a guest token: %s" % exc) from exc
         token = (payload or {}).get("guest_token")
         if not token:
-            raise NetworkError("guest/activate.json 未返回 guest_token")
+            raise NetworkError("guest/activate.json returned no guest_token")
         self._guest_token = token
         logger.debug("guest token acquired (%s)", mask(token))
         return token
@@ -434,7 +437,7 @@ class XClient:
         if code in (401, 403):
             hint = ""
             if code == 403 and session:
-                hint = "（多为 ct0 不匹配或会话过期）"
+                hint = " (usually a ct0 mismatch or an expired session)"
             return AuthError("HTTP %d%s %s" % (code, hint, body.strip()))
         if code == 429:
             reset_at = None
@@ -456,7 +459,7 @@ class XClient:
         except urllib.error.HTTPError as exc:
             raise self._http_error(exc, session=session) from exc
         except (urllib.error.URLError, OSError, ssl.SSLError) as exc:
-            raise NetworkError("网络请求失败：%s" % exc) from exc
+            raise NetworkError("network request failed: %s" % exc) from exc
 
     def _sleep_for(self, exc: Exception, attempt: int) -> None:
         delay = self.limits.backoff ** attempt
@@ -464,7 +467,7 @@ class XClient:
             wait = exc.reset_at - time.time()
             if wait > 0:
                 delay = min(wait + 1.0, 60.0)
-        logger.warning("请求失败，%.1fs 后重试（%s）", delay, exc)
+        logger.warning("request failed, retrying in %.1fs (%s)", delay, exc)
         time.sleep(delay)
 
     def _fetch(self, req: urllib.request.Request, *, session: bool, guest: bool) -> bytes:
@@ -479,13 +482,13 @@ class XClient:
             except AuthError:
                 if guest and not guest_retried:
                     guest_retried = True
-                    logger.info("guest token 被拒，刷新后重试")
+                    logger.info("guest token rejected, refreshing and retrying")
                     token = self.guest_token(refresh=True)
                     req.add_header("x-guest-token", token)
                     continue
                 if session and not bearer_retried:
                     bearer_retried = True
-                    logger.info("会话认证失败，重新读取 Bearer 后重试一次")
+                    logger.info("session auth failed, re-reading the bearer and retrying once")
                     self.credentials(refresh=True)
                     for key in ("authorization", "x-csrf-token", "Cookie"):
                         req.remove_header(key)
@@ -512,12 +515,12 @@ class XClient:
         try:
             return json.loads(body.decode("utf-8", "replace"))
         except ValueError as exc:
-            raise NetworkError("响应不是合法 JSON：%s" % body[:200]) from exc
+            raise NetworkError("response is not valid JSON: %s" % body[:200]) from exc
 
     def get_bytes_with_type(
         self, url: str, *, referer: Optional[str] = None
     ) -> Tuple[bytes, Optional[str]]:
-        """Download raw bytes and report the server's Content-Type (坑 D9)."""
+        """Download raw bytes and report the server's Content-Type (pitfall D9)."""
         headers = {"User-Agent": self.user_agent or DEFAULT_UA}
         if referer:
             headers["Referer"] = referer
@@ -540,7 +543,7 @@ class XClient:
         guest: bool = False,
     ) -> dict:
         """Call a GraphQL operation and unwrap the ``errors`` array."""
-        from . import _endpoints  # 延迟导入，避免与 __init__ 的再导出循环
+        from . import _endpoints  # lazy import to avoid a re-export cycle via __init__
 
         url = _endpoints.build_graphql_url(op, variables, features, field_toggles)
         payload = self.get_json(url, session=session, guest=guest)
@@ -549,7 +552,7 @@ class XClient:
             message = errors[0].get("message", "unknown GraphQL error")
             raise GraphQLAPIError("%s: %s" % (op, message), errors)
         if "data" not in payload:
-            raise GraphQLAPIError("%s: 响应缺少 data 字段" % op, errors)
+            raise GraphQLAPIError("%s: response is missing the data field" % op, errors)
         return payload["data"]
 
     def __repr__(self) -> str:

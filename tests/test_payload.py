@@ -1,4 +1,4 @@
-"""Unit tests for payload unwrapping / metadata extraction (坑 D4/D5/D6/D12)."""
+"""Unit tests for payload unwrapping / metadata extraction (pitfalls D4/D5/D6/D12)."""
 from __future__ import annotations
 
 import sys

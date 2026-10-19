@@ -118,7 +118,7 @@ class DownloadBundleTests(unittest.TestCase):
             client = FakeClient(image_bytes=10)
             article = download.download_article(client, "123", Path(tmp), image_delay=0)
             self.assertIn(IMAGE_URL, article.body_md)
-            self.assertTrue(any("图片过小" in w for w in article.warnings))
+            self.assertTrue(any("image too small" in w for w in article.warnings))
             self.assertFalse((Path(tmp) / "123" / "img").exists())
 
     def test_save_raw_writes_raw_json(self):

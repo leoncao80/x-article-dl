@@ -1,4 +1,4 @@
-"""Unit tests for the Draft.js -> Markdown converter (design doc 坑 C1-C12)."""
+"""Unit tests for the Draft.js -> Markdown converter (pitfalls C1-C12)."""
 from __future__ import annotations
 
 import re
@@ -36,7 +36,7 @@ def md(blocks, entities=None, media=None):
 
 
 class HeaderTests(unittest.TestCase):
-    """坑 C2: header-one/two/three 必须精确映射（核心优势，不许退化）。"""
+    """Pitfall C2: header-one/two/three must map exactly (core advantage, never regress)."""
 
     def test_four_header_levels(self):
         body, _, _ = md(
@@ -55,7 +55,7 @@ class HeaderTests(unittest.TestCase):
 
 
 class ListTests(unittest.TestCase):
-    """坑 C3/C6: 连续合并、depth 缩进、有序列表每层独立编号。"""
+    """Pitfalls C3/C6: run merging, depth indentation, per-depth ordered numbering."""
 
     def test_nested_list_indentation(self):
         body, _, _ = md(
@@ -90,7 +90,7 @@ class ListTests(unittest.TestCase):
 
 
 class QuoteTests(unittest.TestCase):
-    """坑 C4: blockquote 每一行都要加 '> '。"""
+    """Pitfall C4: every line of a blockquote needs the '> ' prefix."""
 
     def test_multiline_quote(self):
         body, _, _ = md([block("first line\nsecond line", "blockquote")])
@@ -98,7 +98,7 @@ class QuoteTests(unittest.TestCase):
 
 
 class InlineTests(unittest.TestCase):
-    """坑 C5/C10/C11: 行内样式、LINK 实体、重叠区间不重复输出。"""
+    """Pitfalls C5/C10/C11: inline styles, LINK entities, no duplicated text on overlap."""
 
     def test_bold_and_italic(self):
         b = block(
@@ -128,7 +128,7 @@ class InlineTests(unittest.TestCase):
             ],
         )
         rendered = render_inline(b, entities)
-        # 去掉链接目标后，可见文本必须恰好是原文一次（不重复、不丢字）
+        # After stripping link targets the visible text must be the original exactly once
         visible = re.sub(r"\]\([^)]*\)", "", rendered).replace("[", "")
         self.assertEqual(visible, "abcdef")
 
@@ -137,7 +137,7 @@ class InlineTests(unittest.TestCase):
 
 
 class EntityMapTests(unittest.TestCase):
-    """坑 C1: entityMap 是 list 形态，必须能解析出链接。"""
+    """Pitfall C1: entityMap arrives as a list and must still yield links."""
 
     def test_list_form_entity_map(self):
         state = {
@@ -153,7 +153,7 @@ class EntityMapTests(unittest.TestCase):
 
 
 class AtomicTests(unittest.TestCase):
-    """坑 C7/D7: atomic 图片块产出 ![](url) 占位。"""
+    """Pitfalls C7/D7: atomic image blocks produce ![](url) placeholders."""
 
     def test_image_atomic(self):
         entities = {"0": {"type": "IMAGE", "data": {"media_id": 12345}}}
@@ -196,7 +196,7 @@ class AtomicTests(unittest.TestCase):
 
 
 class FallbackTests(unittest.TestCase):
-    """坑 C12: 未知 block 类型降级为段落 + warning，不丢内容。"""
+    """Pitfall C12: unknown block types degrade to a paragraph plus a warning."""
 
     def test_unknown_block_becomes_paragraph(self):
         body, _, warnings = md([block("divider payload", "divider")])
@@ -206,7 +206,7 @@ class FallbackTests(unittest.TestCase):
 
 
 class InvariantTests(unittest.TestCase):
-    """输出不变量：每块以 \\n 结尾，最终 strip + \\n；blocks 之间恰一空行。"""
+    """Output invariant: each block ends with \n, final strip + \n, one blank line between."""
 
     def test_blocks_separated_by_one_blank_line(self):
         body, _, _ = md([block("a"), block("b")])
@@ -218,7 +218,7 @@ class InvariantTests(unittest.TestCase):
 
 
 class ConvertArticleTests(unittest.TestCase):
-    """坑 C8: 首个 header-one 与 title 重复时去重。"""
+    """Pitfall C8: a leading header-one duplicating the title is dropped."""
 
     def test_duplicate_title_header_is_dropped(self):
         article_result = {

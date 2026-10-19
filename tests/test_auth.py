@@ -1,4 +1,4 @@
-"""Tests for proxy resolution and Netscape cookie parsing (坑 A2/A4/A8/A9)."""
+"""Tests for proxy resolution and Netscape cookie parsing (pitfalls A2/A4/A8/A9)."""
 from __future__ import annotations
 
 import os
@@ -60,7 +60,7 @@ class CookieTests(unittest.TestCase):
         return Path(tmp.name)
 
     def test_httponly_auth_token_survives_and_foreign_domains_dropped(self):
-        # netflix.com 含子串 "x.com"，旧实现会误收（回归测试）
+        # netflix.com contains the substring "x.com"; the old filter accepted it (regression)
         path = self._write(
             "# Netscape HTTP Cookie File\n"
             "#HttpOnly_.x.com\tTRUE\t/\tTRUE\t0\tauth_token\ttok123\n"

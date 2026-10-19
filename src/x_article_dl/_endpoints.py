@@ -12,18 +12,21 @@ from typing import Dict, Mapping, Optional
 GRAPHQL_BASE = "https://x.com/i/api/graphql"
 GUEST_ACTIVATE_URL = "https://api.x.com/1.1/guest/activate.json"
 
-# queryId 抓包时间：2026-10-19（网页版）。轮换时只改这一张表。
+# Query IDs captured from the web client on 2026-10-19. When they rotate, this
+# table is the only place to edit.
 QUERY_IDS: Dict[str, str] = {
-    # 取 userId / screen_name
+    # handle -> userId / screen_name
     "UserByScreenName": "ck5KkZ8t5cOmoLssopN99Q",
-    # 博主 Articles 时间线（这是 gallery-dl 没有的 tab，必须自己调；坑 L1）
+    # The author's Articles timeline (a tab gallery-dl does not implement;
+    # pitfall L1).
     "UserArticlesTweets": "G9ehBUadUrsNfz-XnAcV4A",
-    # 单条推文；配合 FIELD_TOGGLES 拿 article.content_state（坑 D2）
-    # 注意：不要与 TweetDetail 的 2ICDjqPd81tulZcYrtpTuQ 混用。
+    # Single tweet; combined with FIELD_TOGGLES this returns
+    # article.content_state (pitfall D2).
+    # Do not confuse it with TweetDetail's 2ICDjqPd81tulZcYrtpTuQ.
     "TweetResultByRestId": "qxWQxcMLiTPcavz9Qy5hwQ",
 }
 
-# 每个 operation 的最小可用 feature 集（坑 L11 / D3）。
+# Minimum feature set per operation (pitfalls L11 / D3).
 FEATURES: Dict[str, Dict[str, bool]] = {
     "UserByScreenName": {},
     "UserArticlesTweets": {
@@ -31,15 +34,17 @@ FEATURES: Dict[str, Dict[str, bool]] = {
     },
     "TweetResultByRestId": {
         "articles_preview_enabled": True,
-        # 缺这两项时 article 字段会被裁掉 / GraphQL 400
+        # Without these two the article field is stripped or GraphQL returns 400
         "responsive_web_twitter_article_tweet_consumption_enabled": True,
         "longform_notetweets_consumption_enabled": True,
     },
 }
 
-# fieldToggles 只对 TweetResultByRestId 有意义。
-# withArticleRichContentState=true 是拿到全篇正文（Draft.js blocks）的唯一开关（坑 D1）；
-# withArticlePlainText 保持 False，否则正文退化成纯文本、丢失结构。
+# fieldToggles only matter for TweetResultByRestId.
+# withArticleRichContentState=true is the only switch that returns the full body
+# (Draft.js blocks, pitfall D1).
+# Keep withArticlePlainText false: enabling it degrades the body to plain text and
+# loses all structure.
 FIELD_TOGGLES: Dict[str, Dict[str, bool]] = {
     "TweetResultByRestId": {
         "withArticleRichContentState": True,
