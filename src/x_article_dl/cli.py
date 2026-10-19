@@ -30,7 +30,7 @@ def _version() -> str:
 
         return version("x-article-dl")
     except Exception:  # 源码目录直接跑
-        return "0.1.0"
+        return "0.1.1"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=0, help="只下最新 N 篇（0=全部）")
 
     net = parser.add_argument_group("网络")
-    net.add_argument("--proxy", default=None, help="代理地址（默认 XADL_PROXY 或 http://127.0.0.1:7897）")
+    net.add_argument("--proxy", default=None, help="代理地址，如 http://127.0.0.1:7897（默认直连；也可用 XADL_PROXY / HTTPS_PROXY）")
     net.add_argument("--no-proxy", action="store_true", help="直连，不使用代理")
     net.add_argument("--timeout", type=float, default=30.0, help="单请求超时秒数（默认 30）")
     net.add_argument("--retries", type=int, default=3, help="失败重试次数（默认 3）")

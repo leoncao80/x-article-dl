@@ -56,12 +56,56 @@ pip install -e .        # 开发模式
 
 ## 5. 前置条件
 
-1. **网络**：X 请求需要能访问 `api.x.com` / `x.com` / `pbs.twimg.com`。在 NEC7 等受限环境下默认走 `http://127.0.0.1:7897` 代理，可用 `--proxy` / `XADL_PROXY` / `--no-proxy` 覆盖。
-2. **cookies**：从已登录的浏览器导出 Netscape 格式 cookies，**必须含 `auth_token` 与 `ct0`，且来自同一个会话**。
-   ```bash
-   export XADL_COOKIES=/path/to/x_cookies.txt     # 或 --cookies FILE
-   ```
-   自动探测顺序：`--cookies` → `XADL_COOKIES` → `./x_cookies.txt` → `~/.config/x-article-dl/cookies.txt`。
+### 5.1 运行环境
+
+- **Python 3.9+**（Linux / macOS / Windows 均可）
+- 能访问 `api.x.com`、`x.com`、`pbs.twimg.com`
+- **不需要浏览器、不需要 Node**；`gallery-dl` 可选（仅用来读 Bearer）
+
+**网络 / 代理**：默认**直连**。只有当你的网络需要代理时（公司网络、云服务器、所在地区直连不通）才需要配置，任选一种：
+
+```bash
+x-article-dl <handle> --proxy http://127.0.0.1:7897      # 只对本次生效
+export XADL_PROXY=http://127.0.0.1:7897                 # 当前 shell 生效
+# Windows PowerShell：$env:XADL_PROXY="http://127.0.0.1:7897"
+```
+
+优先级：`--proxy` > `XADL_PROXY` > 标准环境变量 `HTTPS_PROXY` / `https_proxy` > 直连。需要强制直连时用 `--no-proxy`。
+
+### 5.2 cookies（必需）
+
+X 的文章列表接口只接受登录态，需要一个 **Netscape 格式**的 cookie 文件，且满足：
+
+- 含 `auth_token` 与 `ct0`；
+- 两者来自**同一个浏览器、同一个会话**（拼两个 profile 的 cookie 必定 403）；
+- `auth_token` 是 HttpOnly，行首带 `#HttpOnly_`，**必须原样保留**。
+
+**导出方法（任选）：**
+
+| 方式 | 做法 |
+|---|---|
+| 浏览器扩展 | Chrome / Edge / Firefox 装一个能导出 Netscape 格式的扩展（如 “Get cookies.txt LOCALLY”），在 **x.com** 页面导出 |
+| 手工 | DevTools → Application → Cookies → `https://x.com`，取 `auth_token` 和 `ct0`，按下面的行格式各写一行 |
+
+行格式（字段用 TAB 分隔，`#HttpOnly_` 前缀不能丢）：
+
+```
+#HttpOnly_.x.com	TRUE	/	TRUE	0	auth_token	<值>
+.x.com	TRUE	/	TRUE	0	ct0	<值>
+```
+
+**指定文件**（任选一种，路径按你的系统来）：
+
+```bash
+export XADL_COOKIES=~/x_cookies.txt        # Linux / macOS
+# Windows PowerShell：$env:XADL_COOKIES="C:\Users\you\x_cookies.txt"
+
+x-article-dl <handle> --cookies /path/to/x_cookies.txt
+```
+
+自动探测顺序：`--cookies` → `XADL_COOKIES` → `./x_cookies.txt` → `~/.config/x-article-dl/cookies.txt`。
+
+> 🔒 cookie 等同于你的登录态：`.gitignore` 已排除 `x_cookies.txt` / `*.cookies.txt`，不要提交、不要贴到 issue 或公开 CI 日志。
 
 ## 6. 用法
 
@@ -76,7 +120,7 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 | `handle` | 必填 | 可带 `@` |
 | `--outdir DIR` | `./out/<handle>_articles` | 输出目录 |
 | `--limit N` | 0（全部） | 只取最新 N 篇，取够即停，不多翻页 |
-| `--proxy URL` / `--no-proxy` | `http://127.0.0.1:7897` | 代理优先级：`--proxy` > `XADL_PROXY` > `HTTPS_PROXY` > 默认 |
+| `--proxy URL` / `--no-proxy` | 直连 | 代理优先级：`--proxy` > `XADL_PROXY` > `HTTPS_PROXY` > 直连 |
 | `--cookies FILE` | 自动探测 | Netscape cookies |
 | `--bearer TOKEN` | 从 gallery-dl 读 | 应急逃生舱（列表接口仍需 cookies） |
 | `--user-id UID` | 自动解析 | 跳过 `UserByScreenName`，省一次请求 |
@@ -113,7 +157,7 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 | 列表为空 | `features` 缺字段或账号无 Articles（`UserArticlesTweets` 返回空）；`-v` 看服务端 message |
 | `在 ... 里没找到 Bearer token` | gallery-dl 未安装或改了写法；用 `--bearer` 传入 |
 | `Query not found` / 404 | queryId 轮换：只需改 `_endpoints.QUERY_IDS` 一处（`-v` 日志会回显实际 URL） |
-| 代理不通 | `--proxy` 换地址，或 `--no-proxy` 直连（需本机可直连 X） |
+| 连不上 `api.x.com` | 默认直连；如果本机需要代理，用 `--proxy` 或 `XADL_PROXY`；代理端口写错也会表现为超时 |
 | 图片失败但文章成功 | 单图失败只记 warning 并保留远端 URL，不中断；`page.json` 里有记录 |
 | `article 的 content_state.blocks 为空` | 该推文不是长文 Article，或 `withArticleRichContentState` 未生效 |
 

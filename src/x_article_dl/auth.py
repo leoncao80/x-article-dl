@@ -31,7 +31,9 @@ from .errors import AuthError, ConfigError, GraphQLAPIError, NetworkError, RateL
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROXY = "http://127.0.0.1:7897"
+# 默认直连（适配绝大多数环境）；需要代理时用 --proxy / XADL_PROXY / HTTPS_PROXY。
+# 历史背景：在受限网络里跑过 127.0.0.1:7897，但那属于使用者自己的配置，不应作为默认（坑 A8）。
+DEFAULT_PROXY: Optional[str] = None
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
