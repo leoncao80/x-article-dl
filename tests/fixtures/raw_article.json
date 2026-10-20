@@ -1,0 +1,187 @@
+{
+  "data": {
+    "tweetResult": {
+      "result": {
+        "__typename": "Tweet",
+        "rest_id": "1234567890123456789",
+        "core": {
+          "user_results": {
+            "result": {
+              "__typename": "User",
+              "rest_id": "1000000000000000001",
+              "core": {
+                "screen_name": "example_writer",
+                "name": "Example Writer"
+              },
+              "legacy": {
+                "screen_name": "example_writer",
+                "name": "Example Writer"
+              }
+            }
+          }
+        },
+        "legacy": {
+          "created_at": "Mon Oct 19 01:30:00 +0000 2026",
+          "full_text": "https://t.co/placeholder"
+        },
+        "article": {
+          "article_results": {
+            "result": {
+              "rest_id": "900000000000000001",
+              "title": "A Redacted Article For Replay Tests",
+              "content_state": {
+                "blocks": [
+                  {
+                    "key": "b1",
+                    "text": "A Redacted Article For Replay Tests",
+                    "type": "header-one",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b2",
+                    "text": "Opening paragraph with a link and inline styles.",
+                    "type": "unstyled",
+                    "data": {},
+                    "inlineStyleRanges": [
+                      { "offset": 0, "length": 7, "style": "Bold" },
+                      { "offset": 22, "length": 4, "style": "Italic" }
+                    ],
+                    "entityRanges": [{ "offset": 27, "length": 4, "key": 0 }]
+                  },
+                  {
+                    "key": "b3",
+                    "text": "为什么这个字段会变",
+                    "type": "header-two",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b4",
+                    "text": "unordered one",
+                    "type": "unordered-list-item",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b5",
+                    "text": "unordered two",
+                    "type": "unordered-list-item",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b6",
+                    "text": "ordered one",
+                    "type": "ordered-list-item",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b7",
+                    "text": "ordered two",
+                    "type": "ordered-list-item",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b8",
+                    "text": " ",
+                    "type": "atomic",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": [{ "offset": 0, "length": 1, "key": 1 }]
+                  },
+                  {
+                    "key": "b9",
+                    "text": " ",
+                    "type": "atomic",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": [{ "offset": 0, "length": 1, "key": 2 }]
+                  },
+                  {
+                    "key": "b10",
+                    "text": " ",
+                    "type": "atomic",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": [{ "offset": 0, "length": 1, "key": 3 }]
+                  },
+                  {
+                    "key": "b11",
+                    "text": "A quoted sentence.",
+                    "type": "blockquote",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  },
+                  {
+                    "key": "b12",
+                    "text": "print('hello')",
+                    "type": "code-block",
+                    "data": {},
+                    "inlineStyleRanges": [],
+                    "entityRanges": []
+                  }
+                ],
+                "entityMap": {
+                  "0": {
+                    "type": "LINK",
+                    "mutability": "Mutable",
+                    "data": {
+                      "url": "https://example.invalid/docs",
+                      "text": "docs"
+                    }
+                  },
+                  "1": {
+                    "type": "MARKDOWN",
+                    "mutability": "Immutable",
+                    "data": {
+                      "markdown": "```python\nprint('from a MARKDOWN atom')\n```"
+                    }
+                  },
+                  "2": {
+                    "type": "TWEET",
+                    "mutability": "Immutable",
+                    "data": {
+                      "tweetId": "1200000000000000002"
+                    }
+                  },
+                  "3": {
+                    "type": "IMAGE",
+                    "mutability": "Immutable",
+                    "data": {
+                      "mediaId": "700000000000000003",
+                      "caption": "an image"
+                    }
+                  }
+                }
+              },
+              "media_entities": [
+                {
+                  "media_id": "700000000000000003",
+                  "media_info": {
+                    "original_img_url": "https://pbs.example.invalid/media/700000000000000003.jpg"
+                  }
+                }
+              ],
+              "cover_media": {
+                "media_id": "700000000000000004",
+                "media_info": {
+                  "original_img_url": "https://pbs.example.invalid/media/700000000000000004.jpg"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

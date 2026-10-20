@@ -83,8 +83,14 @@ was adjusted during implementation:
 | `tests/test_payload.py` | payload unwrapping, tombstones, timestamps | milliseconds |
 | `tests/test_download_flow.py` | bundle layout, image rewrite, resume, warnings (fake client) | ~0.5 s |
 | `tests/test_auth.py` | proxy precedence, Netscape parsing, domain filtering | milliseconds |
+| `tests/test_payload_fixture.py` | replay of a full payload fixture: wrapper, author, blocks, entities, media | milliseconds |
+| `tests/test_redact_raw.py` | the redaction tool keeps the payload replayable and the content gone | milliseconds |
 | `smoke` workflow | live API / query ID / feature drift | needs cookies |
 
-Known gap: there is no offline replay of a recorded real payload. Adding an
-anonymised `raw.json` fixture would let CI catch upstream schema changes without
-cookies.
+The offline replay used to be the one real gap: `tests/fixtures/raw_article.json` has
+the shape of a real response (wrapper, author, Draft.js blocks, entities, media), so
+a parser or converter regression fails in CI without cookies. It is currently
+hand-written, not a recording — replace it with one when cookies are at hand:
+`--save-raw`, then run `python3 tools/redact_raw.py raw.json` into
+`tests/fixtures/raw_article.json`. See `tests/fixtures/README.md` for what redaction
+removes and what it deliberately keeps.
