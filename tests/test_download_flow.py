@@ -76,6 +76,53 @@ class FakeClient:
         return b"\x89PNG\r\n\x1a\n" + b"0" * self.image_bytes, "image/png"
 
 
+TOMBSTONE = {
+    "data": {
+        "tweetResult": {
+            "result": {
+                "__typename": "TweetTombstone",
+                "tombstone": {"__typename": "BlurredMediaTombstone"},
+            }
+        }
+    }
+}
+
+
+class TombstoneClient(FakeClient):
+    """Guest identity gets a tombstone; the logged-in session sees the tweet."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.identities = []
+
+    def graphql(self, op, variables, **kwargs):
+        guest = bool(kwargs.get("guest"))
+        self.identities.append(guest)
+        self.calls.append((op, kwargs))
+        return TOMBSTONE["data"] if guest else self.payload["data"]
+
+
+class GuestTombstoneTests(unittest.TestCase):
+    def test_guest_tombstone_falls_back_to_session(self):
+        client = TombstoneClient()
+        article = download.fetch_article(client, "123")
+        self.assertEqual(article.title, "With Image")
+        self.assertEqual(client.identities, [True, False])
+
+    def test_session_tombstone_is_not_retried_forever(self):
+        client = TombstoneClient()
+        client.payload = TOMBSTONE
+        with self.assertRaises(download.TweetUnavailableError):
+            download.fetch_article(client, "123", use_guest=False)
+        self.assertEqual(client.identities, [False])
+
+    def test_tombstone_helper_accepts_bare_and_wrapped_payloads(self):
+        self.assertTrue(download._is_tombstone(TOMBSTONE))
+        self.assertTrue(download._is_tombstone(TOMBSTONE["data"]))
+        self.assertFalse(download._is_tombstone(PAYLOAD))
+        self.assertFalse(download._is_tombstone({}))
+
+
 class DownloadBundleTests(unittest.TestCase):
     def test_image_is_localised_and_body_rewritten(self):
         with tempfile.TemporaryDirectory() as tmp:

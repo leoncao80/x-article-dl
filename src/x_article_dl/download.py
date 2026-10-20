@@ -171,20 +171,44 @@ def parse_article_payload(payload: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # fetch
 # --------------------------------------------------------------------------- #
+def _is_tombstone(payload: dict) -> bool:
+    """True when the response is a tombstone rather than a tweet (D5)."""
+    data = (payload or {}).get("data", payload) or {}
+    result = ((data.get("tweetResult") or {}).get("result")) or {}
+    if not isinstance(result, dict):
+        return False
+    return (result.get("__typename") or "") in ("TweetTombstone", "TweetUnavailable")
+
+
 def _fetch_payload(client, tweet_id: str, *, use_guest: bool) -> dict:
-    """Try guest first, fall back to the session (or the reverse, pitfall D1)."""
+    """Try guest first, fall back to the session (or the reverse, pitfall D1).
+
+    X answers a guest request with HTTP 200 + ``TweetTombstone`` when the tweet
+    is restricted (the ``BlurredMediaTombstone`` case), so an unavailable
+    payload counts as a failure and is retried with the other identity.
+    """
     variables = dict(TWEET_VARIABLES, tweetId=str(tweet_id))
     order = [True, False] if use_guest else [False, True]
     last: Optional[Exception] = None
     for guest in order:
         try:
             logger.debug("TweetResultByRestId %s (guest=%s)", tweet_id, guest)
-            return client.graphql(
+            payload = client.graphql(
                 "TweetResultByRestId", variables, session=not guest, guest=guest
             )
         except (AuthError, RateLimitError, NetworkError) as exc:
             last = exc
             logger.debug("guest=%s failed (%s), retrying as the other identity", guest, exc)
+            continue
+        if guest and _is_tombstone(payload):
+            last = TweetUnavailableError(
+                "guest identity got a tombstone (restricted tweet)"
+            )
+            logger.debug(
+                "guest got a tombstone for %s, retrying with the session", tweet_id
+            )
+            continue
+        return payload
     if last is not None:
         raise last
     raise NetworkError("TweetResultByRestId request failed")
