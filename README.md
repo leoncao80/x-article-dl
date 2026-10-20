@@ -93,7 +93,8 @@ The listing endpoint only accepts an authenticated session. You need a
 
 - contains `auth_token` and `ct0`;
 - was exported from the **same browser session** (mixing profiles always yields 403);
-- keeps the `#HttpOnly_` prefix — `auth_token` is HttpOnly.
+- keeps the `#HttpOnly_` prefix on the `auth_token` line (it is HttpOnly);
+  the `ct0` line normally has no prefix.
 
 Export options:
 
@@ -102,7 +103,7 @@ Export options:
 | Browser extension | Install a Netscape cookie exporter (e.g. "Get cookies.txt LOCALLY") and export on the **x.com** page |
 | Manually | DevTools → Application → Cookies → `https://x.com`, then write `auth_token` and `ct0` as two lines |
 
-Line format (TAB-separated, `#HttpOnly_` prefix required):
+Line format (TAB-separated; keep the `#HttpOnly_` prefix on the first line):
 
 ```
 #HttpOnly_.x.com	TRUE	/	TRUE	0	auth_token	<value>
@@ -145,7 +146,11 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 | `--no-images` | off | Keep remote image URLs instead of downloading |
 | `--save-raw` | off | Save the full API response as `raw.json` (sensitive) |
 | `--json` | off | Machine-readable summary on stdout (logs stay on stderr) |
-| `--delay SEC` | 1.0 | Delay between articles; `--no-wait` disables all waiting |
+| `--delay SEC` | 1.0 | Delay between articles |
+| `--timeout SEC` | 30 | Per-request timeout |
+| `--retries N` | 3 | Attempts per request for network, 5xx and 429 failures |
+| `--ua STRING` | Chrome 126 | Override the User-Agent |
+| `--no-wait` | off | No rate-limit sleeps, no article or image delays |
 | `-q` / `-v` | INFO | `-q` warnings only; `-v` debug details |
 
 **Exit codes**
@@ -176,9 +181,11 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 
 | Symptom | Cause / fix |
 |---|---|
-| `HTTP 401` | Missing `x-twitter-auth-type` header or no `auth_token` in cookies |
+| `HTTP 401` | The session cookie was not sent or has expired; check that `auth_token` is in the file `--cookies` points at |
 | `HTTP 403` "Could not authenticate you" | `ct0` and cookie are from different sessions, or the session expired; re-export from the same browser |
 | `HTTP 429` | Rate limited. By default the tool waits for `x-rate-limit-reset`; use `--no-wait` or lower the request rate |
+| `cookie file ... not found` | No cookie file at the given or auto-detected path; set `XADL_COOKIES` or pass `--cookies` |
+| `TweetUnavailableError` | The tweet is deleted or restricted; the guest identity already fell back to the session, so both are refused |
 | Empty listing | Missing `features`, or the account has no Articles; run with `-v` to see the server message |
 | `Bearer token not found` | gallery-dl is not installed or changed its layout; pass `--bearer` |
 | `Query not found` / 404 | A query ID rotated; update `_endpoints.QUERY_IDS` (one place). `-v` shows the actual URL |
@@ -197,8 +204,9 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 ## Development
 
 ```bash
-python -m unittest discover -s tests -v   # 42 offline unit tests
-ruff check src tests
+pip install ruff                            # lint only, not a runtime dependency
+python -m unittest discover -s tests -v     # 63 offline unit tests
+ruff check src tests tools
 ```
 
 Design notes and the pitfall catalogue live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

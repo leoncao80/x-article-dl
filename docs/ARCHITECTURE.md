@@ -83,14 +83,16 @@ was adjusted during implementation:
 | `tests/test_payload.py` | payload unwrapping, tombstones, timestamps | milliseconds |
 | `tests/test_download_flow.py` | bundle layout, image rewrite, resume, warnings (fake client) | ~0.5 s |
 | `tests/test_auth.py` | proxy precedence, Netscape parsing, domain filtering | milliseconds |
-| `tests/test_payload_fixture.py` | replay of a full payload fixture: wrapper, author, blocks, entities, media | milliseconds |
+| `tests/test_payload_fixture.py` | replay of a hand-written payload: wrapper, author, blocks, entities, media | milliseconds |
+| `tests/test_payload_live.py` | replay of a recorded + redacted payload: upstream block mix, headings, code fences | milliseconds |
 | `tests/test_redact_raw.py` | the redaction tool keeps the payload replayable and the content gone | milliseconds |
 | `smoke` workflow | live API / query ID / feature drift | needs cookies |
 
-The offline replay used to be the one real gap: `tests/fixtures/raw_article.json` has
-the shape of a real response (wrapper, author, Draft.js blocks, entities, media), so
-a parser or converter regression fails in CI without cookies. It is currently
-hand-written, not a recording — replace it with one when cookies are at hand:
-`--save-raw`, then run `python3 tools/redact_raw.py raw.json` into
-`tests/fixtures/raw_article.json`. See `tests/fixtures/README.md` for what redaction
-removes and what it deliberately keeps.
+Two payload fixtures guard this layer without cookies:
+`tests/fixtures/raw_article.json` is hand-written and covers every block and entity
+type on purpose; `tests/fixtures/raw_article_live.json` is a recording of a real
+response (163 blocks, 20 `header-two`, three `MARKDOWN` atoms) from 2026-10-21,
+passed through `tools/redact_raw.py`. Re-record the live one after an upstream
+schema change: `--save-raw`, then
+`python3 tools/redact_raw.py raw.json > tests/fixtures/raw_article_live.json`.
+See `tests/fixtures/README.md` for what redaction removes and what it keeps.

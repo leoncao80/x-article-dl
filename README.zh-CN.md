@@ -80,7 +80,7 @@ X 的文章列表接口只接受登录态，需要一个 **Netscape 格式**的 
 
 - 含 `auth_token` 与 `ct0`；
 - 两者来自**同一个浏览器、同一个会话**（拼两个 profile 的 cookie 必定 403）；
-- `auth_token` 是 HttpOnly，行首带 `#HttpOnly_`，**必须原样保留**。
+- `auth_token` 是 HttpOnly，行首带 `#HttpOnly_`，**必须原样保留**（`ct0` 那行通常没有前缀）。
 
 **导出方法（任选）：**
 
@@ -89,7 +89,7 @@ X 的文章列表接口只接受登录态，需要一个 **Netscape 格式**的 
 | 浏览器扩展 | Chrome / Edge / Firefox 装一个能导出 Netscape 格式的扩展（如 “Get cookies.txt LOCALLY”），在 **x.com** 页面导出 |
 | 手工 | DevTools → Application → Cookies → `https://x.com`，取 `auth_token` 和 `ct0`，按下面的行格式各写一行 |
 
-行格式（字段用 TAB 分隔，`#HttpOnly_` 前缀不能丢）：
+行格式（字段用 TAB 分隔；第一行的 `#HttpOnly_` 前缀不能丢）：
 
 ```
 #HttpOnly_.x.com	TRUE	/	TRUE	0	auth_token	<值>
@@ -130,7 +130,11 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 | `--no-images` | off | 只出 Markdown，保留远端图片 URL |
 | `--save-raw` | off | 保存完整 API 响应 `raw.json`（含敏感数据，勿外传） |
 | `--json` | off | stdout 输出机器可读汇总（日志仍在 stderr） |
-| `--delay SEC` | 1.0 | 篇间间隔；`--no-wait` 关闭所有等待 |
+| `--delay SEC` | 1.0 | 篇间间隔 |
+| `--timeout SEC` | 30 | 单请求超时 |
+| `--retries N` | 3 | 每个请求的尝试次数（网络/5xx/429） |
+| `--ua STRING` | Chrome 126 | 覆盖 User-Agent |
+| `--no-wait` | off | 不限流等待、篇间与图片都不 sleep |
 | `-q` / `-v` | INFO | `-q` 只打警告；`-v` 打调试细节 |
 
 **退出码**：`0` 全部成功 · `1` 部分失败 · `2` 配置/认证错误 · `3` 全失败（列表为空或全部篇目失败）· `130` 用户中断。
@@ -153,15 +157,17 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 
 | 现象 | 原因 / 处理 |
 |---|---|
-| `HTTP 401` | 缺 `x-twitter-auth-type` 头或 cookie 无 `auth_token`；检查 cookies 文件 |
+| `HTTP 401` | 会话 cookie 没发出去或已过期；确认 `--cookies` 指向的文件里有 `auth_token` |
 | `HTTP 403`（“Could not authenticate you”） | `ct0` 与 cookie 里的不一致，或会话已过期；重新导出同一浏览器的 cookies |
 | `HTTP 429` | 触发限流；默认会等到 `x-rate-limit-reset` 再重试，或用 `--no-wait` 关闭等待 / 降低频率 |
+| `cookie file ... not found` | 指定/自动探测的路径没有 cookie 文件；设 `XADL_COOKIES` 或用 `--cookies` |
+| `TweetUnavailableError` | 推文被删除或受限；游客身份已自动回退到 session，两者都被拒 |
 | 列表为空 | `features` 缺字段或账号无 Articles（`UserArticlesTweets` 返回空）；`-v` 看服务端 message |
-| `在 ... 里没找到 Bearer token` | gallery-dl 未安装或改了写法；用 `--bearer` 传入 |
+| `no bearer token found in ...` | gallery-dl 未安装或改了写法；用 `--bearer` 传入 |
 | `Query not found` / 404 | queryId 轮换：只需改 `_endpoints.QUERY_IDS` 一处（`-v` 日志会回显实际 URL） |
 | 连不上 `api.x.com` | 默认直连；如果本机需要代理，用 `--proxy` 或 `XADL_PROXY`；代理端口写错也会表现为超时 |
 | 图片失败但文章成功 | 单图失败只记 warning 并保留远端 URL，不中断；`page.json` 里有记录 |
-| `article 的 content_state.blocks 为空` | 该推文不是长文 Article，或 `withArticleRichContentState` 未生效 |
+| `article content_state.blocks is empty` | 该推文不是长文 Article，或 `withArticleRichContentState` 未生效 |
 
 ## 8. 隐私
 
@@ -172,7 +178,9 @@ x-article-dl eng_khairallah1 --no-images --save-raw -v
 ## 开发
 
 ```bash
-python3 -m unittest discover -s tests -v    # 42 个单测，全部纯离线
+pip install ruff                             # 仅用于 lint，不是运行时依赖
+python3 -m unittest discover -s tests -v     # 63 个单测，全部纯离线
+ruff check src tests tools
 ```
 
 模块划分与 52 条坑点清单见 `docs/ARCHITECTURE.md`（英文）；中文归档见 `docs/*.zh-CN.md`。
