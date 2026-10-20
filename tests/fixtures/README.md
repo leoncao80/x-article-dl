@@ -1,5 +1,12 @@
 # Fixtures
 
+Two payloads live here:
+
+| File | Origin | What it guards |
+|---|---|---|
+| `raw_article.json` | hand-written, synthetic | our own parser/converter regressions; every block type and entity type on purpose |
+| `raw_article_live.json` | recorded from X on **2026-10-21**, then redacted | upstream schema drift: the exact 163-block shape X returned, including 20 `header-two` and three `MARKDOWN` atoms |
+
 `raw_article.json` holds one Article tweet in the shape X returns it (wrapper,
 author, Draft.js `content_state`, entities, media), with no real data in it. It is
 replayed by `tests/test_payload_fixture.py`, so a change in what X returns — a new
@@ -8,6 +15,9 @@ block type, a moved field, a renamed wrapper — fails in CI without cookies.
 The file is **hand-written, not a recording**. Replace it with a real one as soon
 as cookies are at hand: `--save-raw` plus the command below. Until then it guards the
 parser and converter against our own regressions, not against upstream drift.
+
+`raw_article_live.json` is the real counterpart. It is replayed by
+`tests/test_payload_live.py`. Re-record it when X changes shape.
 
 It carries no real account, article text or media URL:
 

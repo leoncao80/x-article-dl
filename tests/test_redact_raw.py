@@ -67,6 +67,29 @@ class RedactTests(unittest.TestCase):
         before = blocked(self.original)[1]["text"]
         self.assertEqual(blocked(kept)[1]["text"], before)
 
+    def test_text_with_a_url_is_still_replaced(self):
+        payload = {"legacy": {"full_text": "read https://example.com/secret-article now"}}
+        cleaned = redact_raw.redact(payload)
+        self.assertNotIn("secret-article now", cleaned["legacy"]["full_text"])
+        self.assertEqual(len(cleaned["legacy"]["full_text"]), len(payload["legacy"]["full_text"]))
+
+    def test_bare_hostname_field_is_replaced(self):
+        payload = {"display_url": "someone.example"}
+        cleaned = redact_raw.redact(payload)
+        self.assertEqual(cleaned["display_url"], "example.invalid")
+
+    def test_preview_text_is_replaced(self):
+        payload = {"preview_text": "a preview of the article"}
+        cleaned = redact_raw.redact(payload)
+        self.assertNotIn("preview", cleaned["preview_text"])
+
+    def test_markdown_keeps_fences_but_loses_words(self):
+        source = "```python\nimport secret_module\n```"
+        cleaned = redact_raw.redact({"markdown": source})
+        self.assertEqual(cleaned["markdown"].count("```"), 2)
+        self.assertNotIn("secret", cleaned["markdown"])
+        self.assertEqual(len(cleaned["markdown"]), len(source))
+
 
 if __name__ == "__main__":
     unittest.main()

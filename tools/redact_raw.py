@@ -33,7 +33,17 @@ from typing import Any
 
 HANDLE_FIELDS = {"screen_name", "screenName", "username"}
 NAME_FIELDS = {"name", "display_name"}
-TEXT_FIELDS = {"text", "title", "full_text", "description", "caption", "markdown"}
+TEXT_FIELDS = {
+    "text",
+    "title",
+    "full_text",
+    "description",
+    "caption",
+    "markdown",
+    "preview_text",
+}
+# free-text fields that hold a bare hostname (no scheme), e.g. "khairallah.xyz"
+HOST_FIELDS = {"display_url"}
 URL_RE = re.compile(r"https?://[^\s\"'<>]+")
 # hostnames that are infrastructure rather than personal: keep them recognisable
 KEEP_HOSTS = {"pbs.twimg.com", "video.twimg.com", "abs.twimg.com", "t.co"}
@@ -48,6 +58,24 @@ def _filler(text: str) -> str:
             out.append("0")
         else:
             out.append("x")
+    return "".join(out)
+
+
+def _skeleton(text: str) -> str:
+    """Replace words but keep punctuation, so markdown structure survives.
+
+    ``markdown`` entity data is itself the structure (fences, list markers);
+    plain ``_filler`` would turn it into one long run of ``x`` and the replay
+    test would stop exercising code blocks.
+    """
+    out = []
+    for char in text:
+        if char.isdigit():
+            out.append("0")
+        elif char.isalpha():
+            out.append("x")
+        else:
+            out.append(char)
     return "".join(out)
 
 
@@ -79,10 +107,14 @@ def redact(node: Any, *, key: str = "", keep_text: bool = False) -> Any:
             return "example_writer"
         if key in NAME_FIELDS:
             return "Example Writer"
+        # Fill text *before* substituting URLs: a text field that happens to
+        # contain a link used to skip the filler and leak the whole sentence.
+        if key in TEXT_FIELDS and not keep_text:
+            return _skeleton(node) if key == "markdown" else _filler(node)
+        if key in HOST_FIELDS:
+            return "example.invalid"
         if URL_RE.search(node):
             return URL_RE.sub(lambda match: _url(match.group(0)), node)
-        if key in TEXT_FIELDS and not keep_text:
-            return _filler(node)
         return node
     return node
 
