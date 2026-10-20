@@ -308,7 +308,7 @@ def _tool_version() -> str:
 
         return version("x-article-dl")
     except Exception:  # not installed (running from a source checkout)
-        return "0.1.2"
+        return "0.1.3"
 
 
 def _yaml_str(value: Optional[str]) -> str:

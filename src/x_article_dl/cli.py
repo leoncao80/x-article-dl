@@ -28,7 +28,7 @@ def _version() -> str:
 
         return version("x-article-dl")
     except Exception:  # running from a source checkout
-        return "0.1.2"
+        return "0.1.3"
 
 
 def build_parser() -> argparse.ArgumentParser:
